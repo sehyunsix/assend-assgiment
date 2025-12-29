@@ -8,10 +8,10 @@ Handles loading large CSV files using dask for efficient parallel processing.
 import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 import logging
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,16 +33,7 @@ class DataLoader:
         'amount': 'float64'
     }
 
-    TRADES_DTYPES = {
-        'exchange': 'category',
-        'symbol': 'category',
-        'timestamp': 'int64',
-        'local_timestamp': 'int64',
-        'id': 'int64',
-        'side': 'category',
-        'price': 'float64',
-        'amount': 'float64'
-    }
+
 
     LIQUIDATIONS_DTYPES = {
         'exchange': 'category',
@@ -55,19 +46,7 @@ class DataLoader:
         'amount': 'float64'
     }
 
-    TICKER_DTYPES = {
-        'exchange': 'category',
-        'symbol': 'category',
-        'timestamp': 'int64',
-        'local_timestamp': 'int64',
-        'funding_timestamp': 'int64',
-        'funding_rate': 'float64',
-        'predicted_funding_rate': 'float64',
-        'open_interest': 'float64',
-        'last_price': 'float64',
-        'index_price': 'float64',
-        'mark_price': 'float64'
-    }
+
 
     def __init__(self, data_dir: str = "data/research"):
         """
@@ -78,9 +57,7 @@ class DataLoader:
         """
         self.data_dir = Path(data_dir)
         self._orderbook_ddf: Optional[dd.DataFrame] = None
-        self._trades_ddf: Optional[dd.DataFrame] = None
         self._liquidations_df: Optional[pd.DataFrame] = None
-        self._ticker_df: Optional[pd.DataFrame] = None
 
     def load_orderbook(self, blocksize: str = "256MB") -> dd.DataFrame:
         """
@@ -128,27 +105,6 @@ class DataLoader:
         ddf.to_parquet(parquet_path, engine="pyarrow", compression="snappy")
         logger.info(f"Successfully converted to {parquet_path}")
 
-    def load_trades(self, blocksize: str = "128MB") -> dd.DataFrame:
-        """
-        Load trades.csv using dask.
-
-        Args:
-            blocksize: Size of each partition
-
-        Returns:
-            Dask DataFrame
-        """
-        if self._trades_ddf is None:
-            filepath = self.data_dir / "trades.csv"
-            logger.info(f"Loading trades from {filepath}...")
-            self._trades_ddf = dd.read_csv(
-                filepath,
-                dtype=self.TRADES_DTYPES,
-                blocksize=blocksize,
-                assume_missing=True
-            )
-            logger.info(f"Trades loaded with {self._trades_ddf.npartitions} partitions")
-        return self._trades_ddf
 
     def load_liquidations(self) -> pd.DataFrame:
         """
@@ -167,57 +123,6 @@ class DataLoader:
             )
             logger.info(f"Liquidations loaded: {len(self._liquidations_df)} events")
         return self._liquidations_df
-
-    def load_ticker(self) -> pd.DataFrame:
-        """
-        Load ticker.csv using pandas (moderate size).
-
-        Returns:
-            Pandas DataFrame
-        """
-        if self._ticker_df is None:
-            filepath = self.data_dir / "ticker.csv"
-            logger.info(f"Loading ticker from {filepath}...")
-            self._ticker_df = pd.read_csv(filepath)
-            logger.info(f"Ticker loaded: {len(self._ticker_df)} rows")
-        return self._ticker_df
-
-    def get_time_range(self) -> Dict[str, Any]:
-        """
-        Get the time range of the data.
-
-        Returns:
-            Dictionary with min/max timestamps for each data source
-        """
-        liquidations = self.load_liquidations()
-        ticker = self.load_ticker()
-
-        return {
-            'liquidations': {
-                'min': liquidations['timestamp'].min(),
-                'max': liquidations['timestamp'].max(),
-                'count': len(liquidations)
-            },
-            'ticker': {
-                'min': ticker['timestamp'].min(),
-                'max': ticker['timestamp'].max(),
-                'count': len(ticker)
-            }
-        }
-
-    def sample_orderbook(self, n: int = 1000000) -> pd.DataFrame:
-        """
-        Get a sample of orderbook data for quick analysis.
-
-        Args:
-            n: Number of rows to sample
-
-        Returns:
-            Pandas DataFrame with sampled data
-        """
-        orderbook = self.load_orderbook()
-        logger.info(f"Sampling {n} rows from orderbook...")
-        return orderbook.head(n)
 
     def get_orderbook_at_timestamp(
         self,

@@ -1,0 +1,16 @@
+{
+    "spread_trusted_max": 4.0,
+    "spread_degraded_max": 15.0,
+    "depth_trusted_min": 10.0,
+    "depth_degraded_min": 1.0,
+    "imbalance_trusted_max": 0.8,
+    "imbalance_degraded_max": 0.9,
+    "toxicity_trusted_max": 0.4,
+    "toxicity_degraded_max": 0.7,
+    "liquidation_cluster_threshold": 3,
+    "liquidation_cascade_threshold": 8,
+    "liquidation_value_threshold": 200000,
+    "liquidation_window_us": 10000000,
+    "recovery_window_us": 30000000,
+    "min_state_duration_us": 100000
+}

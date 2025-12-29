@@ -7,18 +7,16 @@ Implements the Sanitization Policy: ACCEPT, REPAIR, QUARANTINE.
 """
 
 import pandas as pd
-import numpy as np
+
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Generator
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
-import dask.dataframe as dd
-from dask.diagnostics import ProgressBar
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 

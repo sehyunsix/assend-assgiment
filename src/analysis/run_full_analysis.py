@@ -6,9 +6,7 @@ Processes the entire 9.5GB orderbook.csv using Dask and performs
 comprehensive liquidation impact analysis.
 """
 
-import os
 import pandas as pd
-import numpy as np
 import dask.dataframe as dd
 from pathlib import Path
 import json
@@ -19,7 +17,7 @@ from orderbook_metrics import OrderbookMetrics
 from liquidation_analyzer import LiquidationAnalyzer
 
 def run_full_analysis():
-    base_dir = Path("/Users/yuksehyun/project/asend-assigment")
+    base_dir = Path("/Users/yuksehyun/project/assend-assgiment")
     data_dir = base_dir / "data" / "research"
     output_dir = base_dir / "output" / "phase1"
     output_dir.mkdir(parents=True, exist_ok=True)

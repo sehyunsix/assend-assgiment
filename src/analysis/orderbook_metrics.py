@@ -6,12 +6,11 @@ Defines and calculates orderbook stability metrics.
 """
 
 import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional
+from typing import Optional
 from dataclasses import dataclass
 import logging
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +50,7 @@ class OrderbookMetrics:
     """
 
     def __init__(self):
-        self.metrics_cache: Dict[int, OrderbookSnapshot] = {}
+        pass
 
     def calculate_obwa(self, df: pd.DataFrame, side: str, levels: int = 10) -> float:
         """Calculate Order Book Weighted Average price for a side."""
@@ -148,154 +147,7 @@ class OrderbookMetrics:
             obwa_spread_bps=obwa_spread_bps
         )
 
-    def calculate_window_spread(
-        self,
-        metrics_df: pd.DataFrame,
-        window_size: int = 30,
-        freq: str = 'S'
-    ) -> pd.Series:
-        """
-        Calculate Window Spread: max(mid_price) - min(mid_price) over a window.
 
-        Args:
-            metrics_df: DataFrame with mid_price and timestamp
-            window_size: Window size in seconds
-            freq: Frequency string for rolling window
-
-        Returns:
-            Series with window spread values
-        """
-        # Ensure timestamp is datetime for rolling window if needed,
-        # but here we assume metrics_df is sorted by timestamp (us)
-        # 1s = 1,000,000 us
-        window_us = window_size * 1_000_000
-
-        # Using a rolling window on index if it's regularly spaced,
-        # or use rolling with time offset if converted to datetime
-        temp_df = metrics_df.copy()
-        temp_df['dt'] = pd.to_datetime(temp_df['timestamp'], unit='us')
-        temp_df = temp_df.set_index('dt')
-
-        rolling = temp_df['mid_price'].rolling(window=f'{window_size}s')
-        window_spread = rolling.max() - rolling.min()
-
-        return window_spread.values
-
-    def calculate_price_impact(
-        self,
-        trades_df: pd.DataFrame,
-        metrics_df: pd.DataFrame,
-        lookahead_seconds: int = 30
-    ) -> pd.DataFrame:
-        """
-        Calculate Price Impact: Q_t * (M_{t+x} - M_t) / M_t
-
-        Args:
-            trades_df: DataFrame with trades (timestamp, side, amount, price)
-            metrics_df: DataFrame with orderbook metrics (timestamp, mid_price)
-            lookahead_seconds: x in seconds
-
-        Returns:
-            DataFrame with price impact per trade
-        """
-        if trades_df.empty or metrics_df.empty:
-            return pd.DataFrame()
-
-        # Merge trades with mid-price at trade time
-        # Use merge_asof to find the closest mid-price at or before trade time
-        trades = trades_df.sort_values('timestamp')
-        metrics = metrics_df[['timestamp', 'mid_price']].sort_values('timestamp')
-
-        impact_df = pd.merge_asof(
-            trades,
-            metrics,
-            on='timestamp',
-            direction='backward'
-        )
-
-        # Find mid-price at t + lookahead
-        lookahead_us = lookahead_seconds * 1_000_000
-        metrics_future = metrics.copy()
-        metrics_future['timestamp_shifted'] = metrics_future['timestamp'] - lookahead_us
-
-        impact_df = pd.merge_asof(
-            impact_df,
-            metrics_future[['timestamp_shifted', 'mid_price']].rename(columns={'mid_price': 'mid_price_future'}),
-            left_on='timestamp',
-            right_on='timestamp_shifted',
-            direction='forward'
-        )
-
-        # Calculate impact
-        # Q_t: Buy = 1, Sell = -1. In our data 'side' might be 'buy'/'sell' or 'bid'/'ask'
-        # liquidations.csv uses 'buy'/'sell'. trades.csv might be different.
-        # Assuming 'side' column exists and needs mapping
-        side_map = {'buy': 1, 'sell': -1, 'bid': -1, 'ask': 1} # For liquidations: Sell = Long Liq (Price down), Buy = Short Liq (Price up)
-        q_t = impact_df['side'].map(side_map).fillna(0)
-
-        impact_df['price_impact'] = q_t * (impact_df['mid_price_future'] - impact_df['mid_price']) / impact_df['mid_price']
-
-        return impact_df
-
-    def calculate_vpin(
-        self,
-        trades_df: pd.DataFrame,
-        bucket_size_vol: float,
-        num_buckets: int = 50
-    ) -> float:
-        """
-        Calculate VPIN (Volume-Synchronized Probability of Informed Trading).
-
-        Args:
-            trades_df: DataFrame with trades (timestamp, side, amount)
-            bucket_size_vol: V, fixed volume per bucket
-            num_buckets: n, number of buckets to use
-
-        Returns:
-            VPIN value
-        """
-        if trades_df.empty:
-            return 0.0
-
-        # 1. Assign trades to volume buckets
-        trades = trades_df.copy()
-        trades['cum_vol'] = trades['amount'].cumsum()
-        trades['bucket'] = (trades['cum_vol'] // bucket_size_vol).astype(int)
-
-        # 2. For each bucket, calculate |V_buy - V_sell|
-        # Map side to buy/sell volume
-        trades['v_buy'] = np.where(trades['side'] == 'buy', trades['amount'], 0)
-        trades['v_sell'] = np.where(trades['side'] == 'sell', trades['amount'], 0)
-
-        bucket_agg = trades.groupby('bucket').agg({
-            'v_buy': 'sum',
-            'v_sell': 'sum'
-        }).head(num_buckets)
-
-        if len(bucket_agg) < num_buckets:
-            logger.warning(f"Not enough trades for {num_buckets} buckets. Using {len(bucket_agg)}.")
-            n = len(bucket_agg)
-        else:
-            n = num_buckets
-
-        if n == 0:
-            return 0.0
-
-        oi_sum = (bucket_agg['v_buy'] - bucket_agg['v_sell']).abs().sum()
-        vpin = oi_sum / (n * bucket_size_vol)
-
-        return vpin
-
-    def calculate_hybrid_indicator(
-        self,
-        window_spread: float,
-        manual_spread: float,
-        obwa_spread: float
-    ) -> float:
-        """
-        Calculate Hybrid Indicator: 0.62 * Window + 0.19 * MS + 0.19 * OBWA
-        """
-        return 0.62 * window_spread + 0.19 * manual_spread + 0.19 * obwa_spread
 
     def calculate_metrics_batch(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -494,52 +346,9 @@ class OrderbookMetrics:
 
         return stability_score
 
-    def find_absorption_range(
-        self,
-        orderbook_df: pd.DataFrame,
-        liquidation_volume: float,
-        timestamp: int
-    ) -> float:
-        """
-        Calculate how many bps the orderbook needs to absorb a specific volume.
-        """
-        snapshot = orderbook_df[orderbook_df['timestamp'] == timestamp]
-        if snapshot.empty:
-            return 0.0
 
-        # Try both sides (sell volume hitting bids, buy volume hitting asks)
-        results = []
-        for side in ['bid', 'ask']:
-            side_df = snapshot[snapshot['side'] == side].copy()
-            ascending = (side == 'ask')
-            side_df = side_df.sort_values('price', ascending=ascending)
 
-            side_df['cum_amount'] = side_df['amount'].cumsum()
-            match = side_df[side_df['cum_amount'] >= liquidation_volume].head(1)
 
-            if not match.empty:
-                best_price = side_df['price'].iloc[0]
-                worst_price = match['price'].iloc[0]
-                bps_impact = abs(worst_price - best_price) / best_price * 10000
-                results.append(bps_impact)
-            else:
-                # If volume is larger than total depth, return max possible impact or large number
-                results.append(1000.0) # Placeholder for extreme impact
-
-        return max(results) if results else 0.0
-
-    @staticmethod
-    def calculate_dynamic_range(
-        avg_spread_bps: float,
-        price_volatility_bps: float,
-        k: float = 2.0,
-        beta: float = 1.5
-    ) -> float:
-        """
-        Calculate dynamic observation range.
-        Range_opt = k * Average_Spread + beta * Volatility
-        """
-        return k * avg_spread_bps + beta * price_volatility_bps
 
     @staticmethod
     def detect_anomalies(

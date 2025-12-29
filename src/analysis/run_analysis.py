@@ -106,41 +106,7 @@ def analyze_liquidations(data_loader: DataLoader, output_dir: Path) -> pd.DataFr
     return liquidations_df
 
 
-def sample_orderbook_analysis(data_loader: DataLoader, output_dir: Path) -> pd.DataFrame:
-    """
-    Sample and analyze orderbook data.
-    Due to the large file size, we'll process in chunks.
-    """
-    logger.info("\n" + "=" * 60)
-    logger.info("STEP 2: Sampling Orderbook Data")
-    logger.info("=" * 60)
 
-    # Load orderbook with dask
-    orderbook_ddf = data_loader.load_orderbook()
-
-    # Get unique timestamps count (approximate)
-    logger.info("Getting orderbook statistics...")
-
-    # Sample first N rows for quick analysis
-    sample_size = 5_000_000  # 5M rows
-    logger.info(f"Sampling first {sample_size:,} rows...")
-
-    with ProgressBar():
-        sample_df = orderbook_ddf.head(sample_size, npartitions=-1)
-
-    logger.info(f"Sample shape: {sample_df.shape}")
-    logger.info(f"Sample columns: {list(sample_df.columns)}")
-    logger.info(f"Sample time range: {sample_df['timestamp'].min()} - {sample_df['timestamp'].max()}")
-
-    # Basic statistics
-    logger.info("\n=== Orderbook Sample Statistics ===")
-    logger.info(f"  Unique timestamps: {sample_df['timestamp'].nunique():,}")
-    logger.info(f"  Bid entries: {len(sample_df[sample_df['side'] == 'bid']):,}")
-    logger.info(f"  Ask entries: {len(sample_df[sample_df['side'] == 'ask']):,}")
-    logger.info(f"  Snapshots: {sample_df['is_snapshot'].sum():,}")
-    logger.info(f"  Price range: ${sample_df['price'].min():,.2f} - ${sample_df['price'].max():,.2f}")
-
-    return sample_df
 
 
 def calculate_orderbook_metrics_optimized(
@@ -527,7 +493,7 @@ def main():
     liquidations_df = analyze_liquidations(data_loader, output_dir)
 
     # Step 2: Sampling (Optional, let's process all using optimized method)
-    # orderbook_sample = sample_orderbook_analysis(data_loader, output_dir)
+
 
     # Step 3: Calculate metrics (OPTIMIZED)
     metrics_df = calculate_orderbook_metrics_optimized(data_loader, output_dir)

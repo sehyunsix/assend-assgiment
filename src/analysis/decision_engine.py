@@ -9,14 +9,13 @@ Implements Data Trust State, Hypothesis Validity State, and Decision Permission.
 import pandas as pd
 import numpy as np
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
+from typing import List, Dict, Tuple, Optional, Union
+from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +55,10 @@ class DecisionConditions:
     imbalance_trusted_max: float = 0.7
     imbalance_degraded_max: float = 0.85
 
+    # Toxicity thresholds (0-1 score)
+    toxicity_trusted_max: float = 0.3
+    toxicity_degraded_max: float = 0.6
+
     # Liquidation-based thresholds
     liquidation_cluster_threshold: int = 2      # Events to trigger WEAKENING
     liquidation_cascade_threshold: int = 5      # Events to trigger INVALID
@@ -64,6 +67,33 @@ class DecisionConditions:
     # Time windows (microseconds)
     liquidation_window_us: int = 10_000_000     # 10 seconds for clustering
     recovery_window_us: int = 60_000_000        # 60 seconds for recovery check
+    min_state_duration_us: int = 100_000       # 100ms minimum stay in HALTED/RESTRICTED
+
+    # Time Alignment Policy
+    watermark_interval_us: int = 1_000_000     # 1 second default watermark
+    allowed_lateness_us: int = 500_000         # 0.5 second allowed lateness
+    time_alignment_mode: str = "event_time"    # "event_time" or "processing_time"
+
+    @staticmethod
+    def from_dict(data: Dict) -> 'DecisionConditions':
+        """Create conditions from a dictionary, with defaults for missing keys."""
+        return DecisionConditions(
+            spread_trusted_max=data.get('spread_trusted_max', 3.2),
+            spread_degraded_max=data.get('spread_degraded_max', 11.6),
+            depth_trusted_min=data.get('depth_trusted_min', 12.7),
+            depth_degraded_min=data.get('depth_degraded_min', 1.7),
+            imbalance_trusted_max=data.get('imbalance_trusted_max', 0.7),
+            imbalance_degraded_max=data.get('imbalance_degraded_max', 0.85),
+            liquidation_cluster_threshold=data.get('liquidation_cluster_threshold', 2),
+            liquidation_cascade_threshold=data.get('liquidation_cascade_threshold', 5),
+            liquidation_value_threshold=data.get('liquidation_value_threshold', 100000),
+            liquidation_window_us=data.get('liquidation_window_us', 10_000_000),
+            recovery_window_us=data.get('recovery_window_us', 60_000_000),
+            min_state_duration_us=data.get('min_state_duration_us', 100_000),
+            watermark_interval_us=data.get('watermark_interval_us', 1_000_000),
+            allowed_lateness_us=data.get('allowed_lateness_us', 500_000),
+            time_alignment_mode=data.get('time_alignment_mode', 'event_time')
+        )
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""
@@ -88,6 +118,10 @@ class DecisionConditions:
             'time_windows': {
                 'liquidation_window_seconds': self.liquidation_window_us / 1_000_000,
                 'recovery_window_seconds': self.recovery_window_us / 1_000_000,
+                'min_state_duration_ms': self.min_state_duration_us / 1_000,
+                'watermark_interval_ms': self.watermark_interval_us / 1_000,
+                'allowed_lateness_ms': self.allowed_lateness_us / 1_000,
+                'mode': self.time_alignment_mode
             }
         }
 
@@ -104,6 +138,7 @@ class SystemState:
     current_spread_bps: float
     current_depth: float
     current_imbalance: float
+    current_toxicity: float
 
     # Liquidation context
     recent_liquidation_count: int
@@ -123,6 +158,7 @@ class SystemState:
                 'spread_bps': self.current_spread_bps,
                 'depth': self.current_depth,
                 'imbalance': self.current_imbalance,
+                'toxicity': self.current_toxicity,
             },
             'liquidation_context': {
                 'recent_count': self.recent_liquidation_count,
@@ -142,14 +178,18 @@ class DecisionEngine:
     3. Decision Permission: Combination of the above two states
     """
 
-    def __init__(self, conditions: Optional[DecisionConditions] = None):
+    def __init__(self, conditions: Optional[Union[DecisionConditions, Dict]] = None):
         """
         Initialize the decision engine.
 
         Args:
-            conditions: Threshold conditions for state transitions
+            conditions: Threshold conditions (object or dict)
         """
-        self.conditions = conditions or DecisionConditions()
+        if isinstance(conditions, dict):
+            self.conditions = DecisionConditions.from_dict(conditions)
+        else:
+            self.conditions = conditions or DecisionConditions()
+        
         self.state_history: List[SystemState] = []
         self.current_state: Optional[SystemState] = None
 
@@ -163,15 +203,17 @@ class DecisionEngine:
         self,
         spread_bps: float,
         depth: float,
-        imbalance: float
+        imbalance: float,
+        toxicity: float = 0.0
     ) -> Tuple[DataTrustState, str]:
         """
-        Evaluate data trust state based on orderbook metrics.
+        Evaluate data trust state based on orderbook metrics and toxicity.
 
         Args:
             spread_bps: Current bid-ask spread in basis points
             depth: Current market depth (BTC within 50 bps)
             imbalance: Current order imbalance (-1 to 1)
+            toxicity: Current toxicity score (0-1)
 
         Returns:
             Tuple of (DataTrustState, reason_string)
@@ -204,8 +246,16 @@ class DecisionEngine:
             imbalance_state = DataTrustState.DEGRADED
             reasons.append(f"imbalance={imbalance:.2f}>DEGRADED")
 
-        # Overall state is the worst of the three
-        states = [spread_state, depth_state, imbalance_state]
+        toxicity_state = DataTrustState.TRUSTED
+        if toxicity > self.conditions.toxicity_degraded_max:
+            toxicity_state = DataTrustState.UNTRUSTED
+            reasons.append(f"toxicity={toxicity:.2f}>UNTRUSTED")
+        elif toxicity > self.conditions.toxicity_trusted_max:
+            toxicity_state = DataTrustState.DEGRADED
+            reasons.append(f"toxicity={toxicity:.2f}>DEGRADED")
+
+        # Overall state is the worst of the four
+        states = [spread_state, depth_state, imbalance_state, toxicity_state]
 
         if DataTrustState.UNTRUSTED in states:
             return DataTrustState.UNTRUSTED, "; ".join(reasons) if reasons else "metrics_untrusted"
@@ -288,7 +338,8 @@ class DecisionEngine:
         depth: float,
         imbalance: float,
         recent_liquidation_count: int = 0,
-        recent_liquidation_value: float = 0.0
+        recent_liquidation_value: float = 0.0,
+        toxicity: float = 0.0
     ) -> SystemState:
         """
         Evaluate current market state and determine decision permission.
@@ -304,12 +355,30 @@ class DecisionEngine:
         Returns:
             SystemState with current evaluation
         """
-        # Evaluate each component
-        data_trust, trust_reason = self.evaluate_data_trust(spread_bps, depth, imbalance)
+        # 1. Evaluate Data Trust
+        data_trust, trust_reason = self.evaluate_data_trust(spread_bps, depth, imbalance, toxicity)
+        
+        # 2. Evaluate Hypothesis Validity
         hypothesis, hypo_reason = self.evaluate_hypothesis_validity(
             recent_liquidation_count, recent_liquidation_value
         )
         decision = self.determine_decision_permission(data_trust, hypothesis)
+        
+        # Enforce Minimum State Duration (Cooldown)
+        # If current state is HALTED/RESTRICTED and we try to move to ALLOWED, check duration
+        if (self.current_state and 
+            self.current_state.decision_permission != DecisionPermission.ALLOWED and
+            decision == DecisionPermission.ALLOWED):
+            
+            # Find when we first entered this restricted state
+            # (In state_history, states are only added when they CHANGE)
+            last_transition = self.state_history[-1]
+            elapsed_us = timestamp - last_transition.timestamp
+            
+            if elapsed_us < self.conditions.min_state_duration_us:
+                # Override: Stay in the previous restricted state
+                decision = self.current_state.decision_permission
+                trust_reason = f"{trust_reason} (cooldown_active:{elapsed_us//1000}ms)"
 
         # Build trigger reason
         trigger = f"trust:{trust_reason}|hypothesis:{hypo_reason}"
@@ -323,6 +392,7 @@ class DecisionEngine:
             current_spread_bps=spread_bps,
             current_depth=depth,
             current_imbalance=imbalance,
+            current_toxicity=toxicity,
             recent_liquidation_count=recent_liquidation_count,
             recent_liquidation_value=recent_liquidation_value,
             trigger=trigger
@@ -453,7 +523,7 @@ def run_decision_engine_analysis(
     liquidation_window_us = conditions.liquidation_window_us
 
     state_records = []
-    decision_records = []
+
 
     for idx, row in metrics_df.iterrows():
         if idx % 10000 == 0:

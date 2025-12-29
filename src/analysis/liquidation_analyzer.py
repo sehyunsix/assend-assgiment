@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
 
-logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -289,36 +289,7 @@ class LiquidationAnalyzer:
             }
         }
 
-    def estimate_recovery_time(
-        self,
-        orderbook_metrics: pd.DataFrame,
-        liquidation_ts: int,
-        baseline_spread_bps: float,
-        max_window_us: int = 300_000_000  # 5 minutes
-    ) -> Optional[int]:
-        """
-        Estimate the time for orderbook to recover to baseline spread.
 
-        Args:
-            orderbook_metrics: DataFrame with orderbook metrics
-            liquidation_ts: Timestamp of liquidation
-            baseline_spread_bps: Normal spread level to return to
-            max_window_us: Maximum time to search for recovery
-
-        Returns:
-            Recovery time in microseconds, or None if not recovered
-        """
-        after_mask = (
-            (orderbook_metrics['timestamp'] > liquidation_ts) &
-            (orderbook_metrics['timestamp'] <= liquidation_ts + max_window_us)
-        )
-        after_metrics = orderbook_metrics[after_mask].sort_values('timestamp')
-
-        for idx, row in after_metrics.iterrows():
-            if row['spread_bps'] <= baseline_spread_bps:
-                return row['timestamp'] - liquidation_ts
-
-        return None
 
     def generate_liquidation_report(self) -> pd.DataFrame:
         """

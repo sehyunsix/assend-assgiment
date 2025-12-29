@@ -1,0 +1,36 @@
+{
+    "base_config": {
+        "spread_trusted_max": 3.2,
+        "spread_degraded_max": 11.6,
+        "depth_trusted_min": 12.7,
+        "depth_degraded_min": 1.7,
+        "imbalance_trusted_max": 0.7,
+        "imbalance_degraded_max": 0.85,
+        "liquidation_cluster_threshold": 2,
+        "liquidation_cascade_threshold": 5,
+        "liquidation_value_threshold": 100000,
+        "liquidation_window_us": 10000000,
+        "recovery_window_us": 60000000,
+        "min_state_duration_us": 100000
+    },
+    "parameter_grid": {
+        "watermark_interval_us": [
+            100000,
+            1000000,
+            5000000
+        ],
+        "allowed_lateness_us": [
+            0,
+            500000,
+            2000000
+        ],
+        "time_alignment_mode": [
+            "event_time",
+            "processing_time"
+        ]
+    },
+    "data": {
+        "metrics_path": "output/phase1/orderbook_metrics.csv",
+        "liquidations_path": "output/phase1/liquidation_report.csv"
+    }
+}
