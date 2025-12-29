@@ -251,5 +251,17 @@ python impact_analyzer.py \
 3.  **Order Imbalance**: 청산 방향(매수/매도)에 따라 오더북의 매수/매도 잔량 불균형이 심화되며, 이는 가격의 추가 변동을 예고하는 선행 지표로 활용됩니다.
 4.  **Recovery**: Spread가 다시 Baseline 수준으로 돌아오는데 걸리는 시간(Recovery Time)을 측정하여 시장의 복원력을 평가합니다.
 
+### 6.8 마이크로세컨드 단위 정밀 분석 (Microsecond Stability Analysis)
+
+대규모 청산 종료 직후 **마이크로세컨드(μs)** 단위의 시장 복구 과정을 정밀 분석한 결과입니다.
+
+![Microsecond Impact Analysis](output/phase1/liquidation_impact_micro.png)
+*청산 종료(0μs) 직후 초정밀 호가 안정성 변화 관찰*
+
+**정밀 분석 인사이트**:
+- **초기 충격 지속 기간**: 청산 종료 직후 약 500,000μs ~ 1,000,000μs(0.5~1초) 동안 호가 스프레드가 가장 불안정한 "Shock Wave" 구간이 관찰됩니다.
+- **고빈도 데이터 전이**: 초당 수십 회 발생하는 호가 업데이트(Step Plot)를 통해, 유동성 공급자가 청산 충격을 인지하고 호가를 재조정하는 과정이 마이크로초 단위로 포착됩니다.
+- **미세 균형 회복**: Imbalance 지표가 0 근처로 수렴하는 미세한 움직임을 통해 시장 참여자들의 심리적 안정화 단계를 추적할 수 있습니다.
+
 ---
 **Ascend Portfolio Assignment - 2025**

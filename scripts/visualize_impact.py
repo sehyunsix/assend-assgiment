@@ -103,5 +103,43 @@ def visualize_liquidation_impact():
     plt.savefig(save_path, dpi=120)
     print(f"Impact visualization saved to {save_path}")
 
+    # --- High Resolution Microsecond Plot ---
+    # Focus on the first 5 seconds after liquidation end
+    high_res_window_us = 5_000_000 
+    hr_plot_start = target.end_ts - 1_000_000 # 1s before end
+    hr_plot_end = target.end_ts + high_res_window_us
+    
+    hr_mask = (metrics_df['timestamp'] >= hr_plot_start) & (metrics_df['timestamp'] <= hr_plot_end)
+    hr_df = metrics_df[hr_mask].copy()
+    # Use microseconds from end_ts for x-axis
+    hr_df['time_us'] = (hr_df['timestamp'] - target.end_ts)
+    
+    fig2, axes2 = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+    
+    # 1. Spread (Micro)
+    axes2[0].step(hr_df['time_us'], hr_df['spread_bps'], where='post', color='#e74c3c', label='Spread (bps)')
+    axes2[0].axvline(0, color='black', linestyle='--', alpha=0.5, label='Liquidation End')
+    axes2[0].set_ylabel('Spread (bps)')
+    axes2[0].legend(loc='upper right')
+    axes2[0].set_title(f"Microsecond-level Stability Analysis (Immediate Aftermath)")
+
+    # 2. Depth (Micro)
+    axes2[1].step(hr_df['time_us'], hr_df['depth_50bps_total'], where='post', color='#2ecc71', label='Depth (BTC)')
+    axes2[1].axvline(0, color='black', linestyle='--', alpha=0.5)
+    axes2[1].set_ylabel('Depth (BTC)')
+    axes2[1].legend(loc='upper right')
+
+    # 3. Imbalance (Micro)
+    axes2[2].step(hr_df['time_us'], hr_df['order_imbalance'], where='post', color='#3498db', label='Imbalance')
+    axes2[2].axvline(0, color='black', linestyle='--', alpha=0.5)
+    axes2[2].set_ylabel('Imbalance')
+    axes2[2].set_xlabel('Time from Liquidation End (microseconds)')
+    axes2[2].legend(loc='upper right')
+
+    plt.tight_layout()
+    hr_save_path = output_dir / "liquidation_impact_micro.png"
+    plt.savefig(hr_save_path, dpi=120)
+    print(f"Microsecond impact visualization saved to {hr_save_path}")
+
 if __name__ == "__main__":
     visualize_liquidation_impact()
