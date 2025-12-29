@@ -64,8 +64,40 @@ docker build -t ascend-trading .
 
 - **Concurrency**: `AsyncIO` 기반 고성능 비동기 스트림 처리
 - **Data Pipeline**: `Dask`를 활용한 대용량 Historical 데이터의 병렬 Sanitization
-- **Analytics**: `Pandas/NumPy`를 이용한 마이크로초 단위 오더북 지표 산출
+- **Analytics**: Pandas/NumPy 기반 실시간 오더북 지표(Spread, Depth, Imbalance) 산출
+- **Reporting**: JSONL 기반의 상태 전이 이력 추적 및 Matplotlib 시각화 리포트
 - **Stability**: `Single Decision State-Machine` 구조를 통한 상태 전이 안정화
+
+---
+
+## 6. Metric Definitions: Mathematical Formulation
+
+시스템에서 측정되는 시장 안정성 지표의 공식 수식입니다:
+
+### 6.1 Mid-Price 및 Spread (Cost)
+가중치 없는 중간 가격과 호가 간격을 측정합니다.
+- **Mid Price ($P_m$):**
+  $$P_m = \frac{P_{ask} + P_{bid}}{2}$$
+- **Spread in Bps ($S_{bps}$):**
+  $$S_{bps} = \frac{P_{ask} - P_{bid}}{P_m} \times 10,000$$
+
+### 6.2 Market Depth (Inertia)
+특정 범위 내의 유동성을 측정합니다.
+- **$\Delta$ bps Depth ($D_{\Delta}$):**
+  $$D_{\Delta} = \sum_{i} Q_{bid,i} \text{ for } P_{bid,i} \ge P_m(1-\Delta) + \sum_{j} Q_{ask,j} \text{ for } P_{ask,j} \le P_m(1+\Delta)$$
+  (본 시스템에서는 $\Delta=50$bps를 기본 유동성 지표로 사용)
+
+### 6.3 Order Imbalance (Direction)
+매수/매도 압력의 비대칭성을 측정합니다.
+- **Order Imbalance ($\alpha$):**
+  $$\alpha = \frac{\sum Q_{bid} - \sum Q_{ask}}{\sum Q_{bid} + \sum Q_{ask}}$$
+  ($\alpha \in [-1, 1]$, 0에 가까울수록 균형 상태)
+
+### 6.4 Recovery Condition (Resilience)
+충격 발생 후 정상 상태로의 회귀 조건을 정의합니다.
+- **Recovery Point ($t_{rec}$):**
+  $$S_{bps}(t_{rec}) \le \bar{S}_{bps, baseline} \times \tau$$
+  ($\tau$: Recovery Threshold, 기본값 1.5)
 
 ---
 **© 2025 Ascend Portfolio Assignment - Trading System Specialist Development**
