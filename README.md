@@ -95,13 +95,12 @@ docker build -t ascend-trading .
 
 ### 5.2 시각화 분석 (Impact Visualization)
 
-#### [A] Orderbook Recovery Profile
-![Impact](output/phase1/liquidation_impact.png)
-> **Insight**: 청산 발생(Gray Area) 직후 Spread가 2~5배 확대되며, Depth가 수렴하는 V자형 복원력을 보입니다.
-
-#### [B] Microsecond Precision Analysis
-![Micro](output/phase1/liquidation_impact_micro.png)
-> **Insight**: 청산 종료 후 초기 **500ms~1000ms** 구간이 가장 취약한 "Shock Wave" 구간임을 마이크로초 단위 데이터를 통해 증명했습니다.
+#### [A] Aggregated Liquidation Impact (초단위 통합 분석)
+![Aggregated Impact](output/phase1/liquidation_impact_aggregated.png)
+> **Insight**: 여러 청산 이벤트를 시간축(0초: 청산 시작) 기준으로 정렬하여 **통합 분석**한 결과입니다.
+> - **연한 선**: 개별 청산 이벤트들의 궤적
+> - **진한 선**: 모든 이벤트의 **평균 복구 프로파일 (Average Profile)**
+> - **회복 탄력성**: 청산 직후 Spread가 급증하지만, 약 20-40초 내에 평균적으로 Baseline 근처로 수렴하는 강력한 복원력을 확인할 수 있습니다.
 
 ---
 
