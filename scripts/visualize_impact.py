@@ -62,9 +62,11 @@ def visualize_liquidation_impact():
     # Pick the most impactful cluster (highest spread change)
     target = max(analyses, key=lambda a: a.spread_change_pct)
     
-    # Setup Plot
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True)
+    # Setup Plot Styling
+    plt.rcParams.update({'font.size': 12, 'axes.labelsize': 14, 'axes.titlesize': 16, 'xtick.labelsize': 12, 'ytick.labelsize': 12})
+    sns.set_theme(style="whitegrid", palette="muted")
+    
+    fig, axes = plt.subplots(3, 1, figsize=(14, 14), sharex=True)
     
     # Window for plotting
     plot_start = target.start_ts - 30_000_000
@@ -75,70 +77,75 @@ def visualize_liquidation_impact():
     plot_df['time_sec'] = (plot_df['timestamp'] - target.start_ts) / 1_000_000
     
     # 1. Spread Plot
-    axes[0].plot(plot_df['time_sec'], plot_df['spread_bps'], label='Spread (bps)', color='#e74c3c', linewidth=1.5)
-    axes[0].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='gray', alpha=0.3, label='Liquidation Cluster')
-    axes[0].axhline(target.before_spread_bps_mean, color='green', linestyle='--', alpha=0.6, label='Baseline')
+    axes[0].plot(plot_df['time_sec'], plot_df['spread_bps'], label='Spread (bps)', color='#D32F2F', linewidth=2)
+    axes[0].fill_between(plot_df['time_sec'], plot_df['spread_bps'], target.before_spread_bps_mean, 
+                         where=(plot_df['spread_bps'] > target.before_spread_bps_mean), color='#D32F2F', alpha=0.1)
+    
+    axes[0].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='#9E9E9E', alpha=0.2, label='Liquidation Event')
+    axes[0].axhline(target.before_spread_bps_mean, color='#388E3C', linestyle='--', linewidth=2, label='Baseline')
+    
     if target.recovery_time_us:
-        axes[0].axvline(target.recovery_time_us/1_000_000, color='blue', linestyle=':', label='Recovered')
+        recovery_sec = target.recovery_time_us/1_000_000
+        axes[0].axvline(recovery_sec, color='#1976D2', linestyle=':', linewidth=2, label=f'Recovery ({recovery_sec:.1f}s)')
+        # Annotation for recovery
+        axes[0].annotate('Stabilized', xy=(recovery_sec, target.before_spread_bps_mean), xytext=(recovery_sec+5, target.before_spread_bps_mean+5),
+                         arrowprops=dict(facecolor='black', shrink=0.05, width=1, headwidth=5))
+
     axes[0].set_ylabel('Spread (bps)')
-    axes[0].legend(loc='upper right')
-    axes[0].set_title(f"Liquidation Impact Analysis (Value: ${target.total_value:,.0f})")
+    axes[0].set_title(f"Market Resilience Profile (Liq: ${target.total_value:,.0f})", fontweight='bold', pad=20)
+    axes[0].legend(loc='upper right', frameon=True, shadow=True)
 
     # 2. Depth Plot
-    axes[1].plot(plot_df['time_sec'], plot_df['depth_50bps_total'], label='Depth (BTC)', color='#2ecc71', linewidth=1.5)
-    axes[1].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='gray', alpha=0.3)
+    axes[1].plot(plot_df['time_sec'], plot_df['depth_50bps_total'], label='Depth (BTC)', color='#388E3C', linewidth=2)
+    axes[1].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='#9E9E9E', alpha=0.2)
     axes[1].set_ylabel('Depth (BTC)')
-    axes[1].legend(loc='upper right')
+    axes[1].legend(loc='upper right', frameon=True)
 
     # 3. Imbalance Plot
-    axes[2].plot(plot_df['time_sec'], plot_df['order_imbalance'], label='Imbalance', color='#3498db', linewidth=1.5)
-    axes[2].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='gray', alpha=0.3)
-    axes[2].axhline(0, color='black', alpha=0.3)
-    axes[2].set_ylabel('Order Imbalance')
-    axes[2].set_xlabel('Time from Liquidation Start (sec)')
-    axes[2].legend(loc='upper right')
+    axes[2].plot(plot_df['time_sec'], plot_df['order_imbalance'], label='Imbalance', color='#0288D1', linewidth=2)
+    axes[2].axvspan(0, (target.end_ts - target.start_ts)/1_000_000, color='#9E9E9E', alpha=0.2)
+    axes[2].axhline(0, color='black', linewidth=1, alpha=0.5)
+    axes[2].set_ylabel('Imbalance α')
+    axes[2].set_xlabel('Time from Liquidation Start (seconds)')
+    axes[2].legend(loc='upper right', frameon=True)
 
     plt.tight_layout()
     save_path = output_dir / "liquidation_impact.png"
-    plt.savefig(save_path, dpi=120)
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"Impact visualization saved to {save_path}")
 
     # --- High Resolution Microsecond Plot ---
-    # Focus on the first 5 seconds after liquidation end
+    fig2, axes2 = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    
     high_res_window_us = 5_000_000 
-    hr_plot_start = target.end_ts - 1_000_000 # 1s before end
+    hr_plot_start = target.end_ts - 500_000 
     hr_plot_end = target.end_ts + high_res_window_us
     
     hr_mask = (metrics_df['timestamp'] >= hr_plot_start) & (metrics_df['timestamp'] <= hr_plot_end)
     hr_df = metrics_df[hr_mask].copy()
-    # Use microseconds from end_ts for x-axis
-    hr_df['time_us'] = (hr_df['timestamp'] - target.end_ts)
-    
-    fig2, axes2 = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+    hr_df['time_ms'] = (hr_df['timestamp'] - target.end_ts) / 1000
     
     # 1. Spread (Micro)
-    axes2[0].step(hr_df['time_us'], hr_df['spread_bps'], where='post', color='#e74c3c', label='Spread (bps)')
-    axes2[0].axvline(0, color='black', linestyle='--', alpha=0.5, label='Liquidation End')
+    axes2[0].step(hr_df['time_ms'], hr_df['spread_bps'], where='post', color='#D32F2F', linewidth=2, label='Ticks (Step)')
+    axes2[0].axvline(0, color='black', linestyle='--', linewidth=2, alpha=0.6, label='Liquidation End')
     axes2[0].set_ylabel('Spread (bps)')
-    axes2[0].legend(loc='upper right')
-    axes2[0].set_title(f"Microsecond-level Stability Analysis (Immediate Aftermath)")
+    axes2[0].set_title(f"Micro-Stability Analysis (Zoom: 5000ms Post-Event)", fontweight='bold', pad=20)
+    axes2[0].legend(loc='upper right', frameon=True)
 
     # 2. Depth (Micro)
-    axes2[1].step(hr_df['time_us'], hr_df['depth_50bps_total'], where='post', color='#2ecc71', label='Depth (BTC)')
-    axes2[1].axvline(0, color='black', linestyle='--', alpha=0.5)
+    axes2[1].step(hr_df['time_ms'], hr_df['depth_50bps_total'], where='post', color='#388E3C', linewidth=2)
+    axes2[1].axvline(0, color='black', linestyle='--', linewidth=2, alpha=0.6)
     axes2[1].set_ylabel('Depth (BTC)')
-    axes2[1].legend(loc='upper right')
 
     # 3. Imbalance (Micro)
-    axes2[2].step(hr_df['time_us'], hr_df['order_imbalance'], where='post', color='#3498db', label='Imbalance')
-    axes2[2].axvline(0, color='black', linestyle='--', alpha=0.5)
-    axes2[2].set_ylabel('Imbalance')
-    axes2[2].set_xlabel('Time from Liquidation End (microseconds)')
-    axes2[2].legend(loc='upper right')
+    axes2[2].step(hr_df['time_ms'], hr_df['order_imbalance'], where='post', color='#0288D1', linewidth=2)
+    axes2[2].axvline(0, color='black', linestyle='--', linewidth=2, alpha=0.6)
+    axes2[2].set_ylabel('α Imbalance')
+    axes2[2].set_xlabel('Time from Impact (milliseconds)')
 
     plt.tight_layout()
     hr_save_path = output_dir / "liquidation_impact_micro.png"
-    plt.savefig(hr_save_path, dpi=120)
+    plt.savefig(hr_save_path, dpi=150, bbox_inches='tight')
     print(f"Microsecond impact visualization saved to {hr_save_path}")
 
 if __name__ == "__main__":
