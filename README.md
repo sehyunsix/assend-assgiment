@@ -18,6 +18,37 @@
 
 ---
 
+## 3. Research and Design
+
+### 3.1 가장 위험한 불확실성 (Critical Uncertainty)
+가장 큰 위험은 **데이터 스트림 간의 시간축 불일치(Time Skew)**였습니다. Trade, Orderbook, Liquidation 등 서로 다른 소스에서 오는 데이터가 물리적으로 다른 시점에 도착할 때, 이를 올바르게 정렬하지 못하면 시스템은 실제 존재하지 않는 시장 상태를 기반으로 의사결정을 내리게 됩니다.
+
+### 3.2 Dirty Data 판단 조건 (Detection Logic)
+`DirtyDataDetector`는 다음 세 가지를 핵심 Dirty 데이터로 정의합니다:
+1. **Out-of-order Data**: 과거 데이터가 현재의 Watermark보다 늦게 도착하는 경우.
+2. **Crossed Market**: 매수 호가가 매도 호가보다 높아지는 비정상 상황 (Binance API 이슈 또는 지연).
+3. **Z-score 기반 Price Spike**: 통계적 범위를 벗어난 비현실적인 급격한 가격 변동.
+
+### 3.3 가설(의사결정 구조) 반영 (Hypothesis Integration)
+위의 조건들은 `DataTrustLevel`에 직접적으로 영향을 미칩니다:
+- **QUARANTINE**: Dirty Data 감지 시 해당 패킷을 격리하고 분석 대상에서 제외.
+- **UNTRUSTED State**: 격리된 데이터가 일정 비율 이상 지속되면 시스템 전체의 신뢰도를 `UNTRUSTED`로 하향 조정하여 엔진의 모든 액션을 차단(`HALTED`).
+
+### 3.4 가설 변화에 따른 시스템 동작 (Behavioral Shift)
+`DecisionConditions` 파라미터를 통해 가설을 조정할 수 있습니다:
+- **보수적 가설**: Spread나 Imbalance 임계치를 낮추면, 시장의 미세한 흔들림에도 시스템은 즉시 `RESTRICTED` 또는 `HALTED`로 전환되어 자산을 보호합니다.
+- **공격적 가설**: 임계치를 완화하면 시장 충격 시에도 거래 가능 구간을 더 넓게 가져가며 수익 기회를 탐색합니다.
+
+### 3.5 판단 중단 설계 (Stopping Criteria)
+다음 두 가지 시스템적 임계 상황에서 판단을 중단합니다:
+1. **데이터 품질 하락**: `DirtyDataDetector`에 의해 데이터 신뢰도가 확보되지 않을 때.
+2. **복원력 한계 초과**: 대규모 청산 클러스터가 지속적으로 발생하여 `liquidation_cascade_threshold`를 초과할 때.
+
+### 3.6 재설계 시 개선할 요소 (Potential Simplification)
+현재 각 데이터 소스별로 분산된 동기화 로직을 **중앙 집중식 통합 타임라인 버퍼**로 단순화하고 싶습니다. 모든 데이터를 하나의 공통 정렬 큐(Single Sorted Queue)로 유입시키고, 엔진은 오직 완성된 타임라인 스냅샷만 구독하는 구조로 변경한다면 복잡도를 획기적으로 낮출 수 있을 것입니다.
+
+---
+
 ## 2. Core Systemic Solutions
 
 ### 2.1 Unified Execution Engine (Single Binary Path)
