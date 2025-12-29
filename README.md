@@ -238,5 +238,18 @@ python impact_analyzer.py \
     → Hypothesis: WEAKENING → Decision: RESTRICTED
 ```
 
+### 6.7 시각화 결과 분석 (Visualization Results)
+
+아래 그래프는 대규모 청산 클러스터 발생 시 오더북 지표의 실시간 변화를 분석한 결과입니다.
+
+![Liquidation Impact Analysis](output/phase1/liquidation_impact.png)
+*대규모 청산(Gray Area) 발생에 따른 Spread 확대 및 Depth 감소 현상 분석*
+
+**분석 결과 요약**:
+1.  **Spread Impact**: 청산 발생 직후 Spread가 Baseline 대비 약 2~5배 수준으로 급격히 확대됩니다. 이는 시장가 주문 체결로 인해 일시적으로 호가 공백이 발생했음을 의미합니다.
+2.  **Depth Contraction**: 청산 주문이 오더북의 유동성을 흡수하면서 가용 Depth가 급감합니다. 이후 서서히 유동성이 공급되며 회복되는 "V-자형" 패턴을 보입니다.
+3.  **Order Imbalance**: 청산 방향(매수/매도)에 따라 오더북의 매수/매도 잔량 불균형이 심화되며, 이는 가격의 추가 변동을 예고하는 선행 지표로 활용됩니다.
+4.  **Recovery**: Spread가 다시 Baseline 수준으로 돌아오는데 걸리는 시간(Recovery Time)을 측정하여 시장의 복원력을 평가합니다.
+
 ---
 **Ascend Portfolio Assignment - 2025**
