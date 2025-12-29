@@ -146,4 +146,97 @@ assend-assgiment/
 ```
 
 ---
+
+## 6. 대규모 청산 이벤트 임팩트 분석 (Liquidation Impact Analysis)
+
+### 6.1 대규모 청산을 어떻게 관찰하는가?
+
+대규모 청산 이벤트는 다음 조건을 만족하는 이벤트를 의미합니다:
+
+| 기준                | 임계값             | 설명                                         |
+| :---                | :---                | :---                                         |
+| **청산 금액**          | 상위 10% (Percentile) | 전체 청산 금액 분포에서 상위 10%에 해당하는 청산 |
+| **클러스터 이벤트 수**  | ≥ 3개                | 5초 내 연속 발생한 청산 이벤트 수              |
+| **클러스터 총 금액**    | ≥ $100,000           | 클러스터 내 청산 금액 합계                    |
+
+**클러스터링 알고리즘**: 5초(`liquidation_window_us=5,000,000`) 내에 발생한 청산을 하나의 클러스터로 그룹화
+
+### 6.2 오더북 안정성 지표 (Orderbook Stability Metrics)
+
+#### 핵심 지표 정의
+
+| Metric              | 정의                                                           | 안정 기준         |
+| :---                | :---                                                           | :---               |
+| **Spread (bps)**    | `(best_ask - best_bid) / mid_price × 10000`                    | < 3.2 bps (TRUSTED) |
+| **Depth (BTC)**     | 50bps 범위 내 누적 수량 (bid + ask)                             | > 12.7 BTC (TRUSTED) |
+| **Order Imbalance** | `(bid_depth - ask_depth) / (bid_depth + ask_depth)`            | |α| < 0.7 (TRUSTED) |
+| **Recovery Time**   | 청산 종료 후 Spread가 baseline의 150% 이하로 돌아오는 시간   | -                  |
+
+#### 청산 전/후 비교 방법
+
+```
+[--- 60초 Before ---][Liquidation Cluster][--- 60초 After ---]
+        ↑                    ↑                   ↑
+   Baseline 측정         임팩트 발생          Recovery 측정
+```
+
+1.  **Baseline (Before)**: 청산 시작 60초 전 구간의 평균 Spread, Depth, Imbalance
+2.  **Impact (After)**: 청산 종료 60초 후 구간의 평균값
+3.  **Change %**: `(After - Before) / Before × 100`
+
+### 6.3 임팩트 분석 결과 지표
+
+| 분석 지표                    | 설명                                                   |
+| :---                       | :---                                                   |
+| `spread_change_pct`        | 청산 후 Spread 변화율 (양수 = 확대/불안정)                  |
+| `depth_change_pct`         | 청산 후 Depth 변화율 (음수 = 유동성 감소)                   |
+| `price_change_pct`         | 청산 후 가격 변동율                                      |
+| `recovery_time_sec`        | 안정성 회복 시간 (초)                                    |
+| `recovery_rate`            | 청산 클러스터 중 5분 내 회복한 비율                         |
+
+### 6.4 규모별 임팩트 비교
+
+| 청산 규모       | 금액 범위         | 예상 Spread 변화 | 예상 Recovery Time |
+| :---           | :---              | :---              | :---               |
+| **Small**      | < $50,000         | +10% ~ +30%       | < 30초             |
+| **Medium**     | $50,000 ~ $200,000 | +30% ~ +100%      | 30초 ~ 2분         |
+| **Large**      | > $200,000        | +100% ~ +500%     | 2분 ~ 5분          |
+
+### 6.5 분석 도구 사용법
+
+#### Impact Analyzer 실행
+```bash
+cd src/analysis
+python impact_analyzer.py \
+  --metrics output/phase1/orderbook_metrics.csv \
+  --liquidations output/phase1/liquidation_summary.json \
+  --output output/phase1
+```
+
+#### 출력 파일
+- `liquidation_impact_analysis.csv`: 클러스터별 상세 임팩트 분석
+- `recovery_time_analysis.json`: 회복 시간 통계 요약
+
+### 6.6 DecisionEngine에서의 청산 반영
+
+`DecisionEngine`은 다음 파라미터로 청산 임팩트를 평가합니다:
+
+| 파라미터                          | 기본값       | 역할                                |
+| :---                            | :---          | :---                              |
+| `liquidation_cluster_threshold` | 2             | WEAKENING 트리거 청산 수            |
+| `liquidation_cascade_threshold` | 5             | INVALID (HALT) 트리거 청산 수      |
+| `liquidation_value_threshold`   | $100,000      | INVALID 트리거 누적 청산 금액       |
+| `liquidation_window_us`         | 10,000,000 (10초) | 청산 계산 윈도우                |
+| `recovery_window_us`            | 60,000,000 (60초) | 회복 확인 윈도우                |
+
+**상태 전환 로직**:
+```
+[liquidation_count >= cascade_threshold OR liquidation_value >= value_threshold]
+    → Hypothesis: INVALID → Decision: HALTED
+
+[cluster_threshold <= liquidation_count < cascade_threshold]
+    → Hypothesis: WEAKENING → Decision: RESTRICTED
+```
+
+---
 **Ascend Portfolio Assignment - 2025**
